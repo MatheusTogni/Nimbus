@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum RiskStatus {
+  IDENTIFIED
+  ANALYZING
+  MITIGATING
+  MONITORING
+  CLOSED
+}
+
+enum AuditEntity {
+  RISK
+  ACTION
+  COMMENT
+  CATEGORY
+  USER
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+model Organization {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String   @unique
+  isDemo       Boolean  @default(false)
+  riskSequence Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  users      User[]
+  categories Category[]
+  risks      Risk[]
+  auditLogs  AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  email          String    @unique
+  passwordHash   String
+  role           Role      @default(VIEWER)
+  isDemo         Boolean   @default(false)
+  locale         String    @default("pt-BR")
+  theme          String    @default("system")
+  active         Boolean   @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens   RefreshToken[]
+  ownedRisks      Risk[]         @relation("RiskOwner")
+  createdRisks    Risk[]         @relation("RiskCreator")
+  assignedActions RiskAction[]
+  comments        Comment[]
+  auditLogs       AuditLog[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Category {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  name           String
+  color          String   @default("#64748b")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  risks        Risk[]
+
+  @@unique([organizationId, name])
+  @@map("categories")
+}
+
+model Risk {
+  id                  String     @id @default(uuid()) @db.Uuid
+  organizationId      String     @db.Uuid
+  code                String
+  title               String
+  description         String     @default("")
+  categoryId          String?    @db.Uuid
+  ownerId             String?    @db.Uuid
+  probability         Int
+  impact              Int
+  score               Int
+  residualProbability Int?
+  residualImpact      Int?
+  residualScore       Int?
+  status              RiskStatus @default(IDENTIFIED)
+  reviewDate          DateTime?
+  createdById         String     @db.Uuid
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  owner        User?        @relation("RiskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy    User         @relation("RiskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  actions      RiskAction[]
+  comments     Comment[]
+  auditLogs    AuditLog[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, score])
+  @@index([organizationId, categoryId])
+  @@map("risks")
+}
+
+model RiskAction {
+  id          String    @id @default(uuid()) @db.Uuid
+  riskId      String    @db.Uuid
+  description String
+  assigneeId  String?   @db.Uuid
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  risk     Risk  @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  assignee User? @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([riskId])
+  @@map("risk_actions")
+}
+
+model Comment {
+  id        String   @id @default(uuid()) @db.Uuid
+  riskId    String   @db.Uuid
+  authorId  String   @db.Uuid
+  body      String
+  createdAt DateTime @default(now())
+
+  risk   Risk @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([riskId])
+  @@map("comments")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  riskId         String?     @db.Uuid
+  userId         String?     @db.Uuid
+  entity         AuditEntity
+  entityId       String      @db.Uuid
+  action         AuditAction
+  changes        Json        @default("{}")
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  risk         Risk?        @relation(fields: [riskId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([riskId, createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,9 @@
+# Nimbus — restore the demo data every day at 03:00 Brasília time (UTC-3, no daylight saving).
+#
+# Install with:  crontab -e   (as the user that owns /opt/nimbus)
+#
+# Ubuntu's cron uses the server time zone. Check it with `timedatectl`:
+#   - server in UTC (the default on most VPS) -> use "0 6 * * *" (06:00 UTC = 03:00 BRT)
+#   - server in America/Sao_Paulo             -> use "0 3 * * *"
+
+0 6 * * * cd /opt/nimbus/back && /usr/bin/node dist/scripts/reset-demo.js >> /var/log/nimbus/reset-demo.log 2>&1
